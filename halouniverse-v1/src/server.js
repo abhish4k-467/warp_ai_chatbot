@@ -42,9 +42,50 @@ app.post('/chat/stop', (req, res) => {
   res.json({ stopped: true });
 });
 
+// Proxy endpoint for Tavily search so frontend can fetch results via backend (keeps API key server-side)
+app.post('/search/tavily', async (req, res) => {
+  const { query, limit = 5 } = req.body || {};
+  if (!query || typeof query !== 'string') return res.status(400).json({ error: 'Missing query' });
+  const tavilyApiKey = process.env.TAVILY_API_KEY;
+  if (!tavilyApiKey) return res.status(500).json({ error: 'TAVILY_API_KEY not set on server' });
+
+  const TAVILY_BASE = process.env.TAVILY_BASE_URL || 'https://api.tavily.com';
+  const url = `${TAVILY_BASE.replace(/\/$/, '')}/search`;
+
+  try {
+    const tavilyResp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${tavilyApiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        query,
+        max_results: limit,
+        search_depth: "basic"
+      })
+    });
+
+    const bodyText = await tavilyResp.text().catch(()=> '');
+    if (!tavilyResp.ok) {
+      console.warn(`Tavily API error ${tavilyResp.status} when calling ${url}`, bodyText);
+      return res.status(tavilyResp.status).json({ error: 'Tavily API error', status: tavilyResp.status, url, body: tryParse(bodyText) });
+    }
+
+    try { return res.status(200).json(JSON.parse(bodyText)) } catch { return res.status(200).send(bodyText) }
+  } catch (e) {
+    console.warn('Tavily proxy error', e);
+    return res.status(500).json({ error: 'Tavily proxy error', details: String(e) });
+  }
+})
+
+function tryParse(text){
+  try{ return JSON.parse(text) }catch{return text}
+}
+
 // Chat message -> forwards to Groq and returns reply (non-streaming)
 app.post('/chat/message', async (req, res) => {
-  const { text, userId, channelId, haloThink } = req.body || {};
+  const { text, userId, channelId, haloThink, webSearch, tavilyResults } = req.body || {};
   if (!text || typeof text !== 'string') {
     return res.status(400).json({ error: 'Missing text' });
   }
@@ -64,8 +105,7 @@ app.post('/chat/message', async (req, res) => {
     const totalChars = String(text || '').replace(/\s+/g, '').length;
     const lines = String(text || '').split('\n').length;
 
-    // Definitions
-    const isSuperShort = totalChars <= 10; // "Hi", "Hello", "Yo"
+    const isSuperShort = totalChars <= 10; 
     const isSimple = totalChars > 0 && totalChars <= 120 && lines <= 2;
 
     // Base system prompt
@@ -73,33 +113,88 @@ app.post('/chat/message', async (req, res) => {
 Always reply in a friendly, concise way with natural emojis 🎉.
 Keep answers short unless the user explicitly asks for detail.`;
 
-    // Extra formatting rules (only for complex prompts or haloThink)
     const formattingExtra = `\n\n### Formatting Rules:
 - Add a **title/heading** only for complex outputs, separated with a horizontal line (---).
 - Use **bold text** and emojis for section headers when appropriate.
 - Write in clear paragraphs, never a single block of text.
-- Use **lists** (numbered or bullet points) when explaining step-by-step content.
+- Use **lists** when explaining step-by-step content.
 - For stories, poems, or creative writing:
   - Begin with a **story title** styled with emoji + bold text.
   - Keep paragraphs short, descriptive, and dramatic.
   - End with a reflection, suspense, or a question if fitting.
 - For code:
-  - Always wrap in proper code blocks with language specified (\`\`\`python, \`\`\`javascript, etc).
+  - Always wrap in proper code blocks with language specified.
   - Include comments for clarity.`;
 
-    // Final system prompt logic
     let systemPrompt;
-    if (isSuperShort) {
+    if (isSuperShort && !webSearch) {
       systemPrompt = `You are HALO AI. The user just greeted you with something very short like "Hi". 
-Reply with a single friendly one-liner and one emoji. Do NOT use headings, borders, or formatting.`;
+Reply with a single friendly one-liner and one emoji.`;
     } else {
-      systemPrompt = (isSimple && !haloThink) ? baseSystem : baseSystem + formattingExtra;
+      systemPrompt = (isSimple && !haloThink && !webSearch) ? baseSystem : baseSystem + formattingExtra;
     }
 
     const messages = [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: text }
     ];
+
+    // Always honor webSearch request
+    if (webSearch) {
+      try {
+        const tavilyApiKey = process.env.TAVILY_API_KEY;
+        if (!tavilyApiKey) {
+          console.warn('Web search requested but TAVILY_API_KEY not set');
+        } else {
+          const tavilyResp = await fetch('https://api.tavily.com/search', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${tavilyApiKey}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              query: text,
+              max_results: 5,
+              search_depth: "basic"
+            })
+          });
+
+          if (tavilyResp.ok) {
+            const tavilyJson = await tavilyResp.json().catch(()=> null);
+            let summary = '';
+            if (tavilyJson && Array.isArray(tavilyJson.results)) {
+              summary = tavilyJson.results.slice(0,5).map((r, i) => `(${i+1}) ${r.title || r.snippet || r.url || ''}`).join('\n');
+            } else if (tavilyJson && typeof tavilyJson.summary === 'string') {
+              summary = String(tavilyJson.summary);
+            }
+            if (summary) {
+              messages.push({ role: 'system', content: `Web search results (from Tavily):\n${summary}` });
+            }
+          } else {
+            const body = await tavilyResp.text().catch(()=> '')
+            console.warn('Tavily API error', tavilyResp.status, body)
+          }
+        }
+      } catch (e) {
+        console.warn('Error calling Tavily', e)
+      }
+    } else if (tavilyResults) {
+      try {
+        let summary = '';
+        if (Array.isArray(tavilyResults)) {
+          summary = tavilyResults.slice(0,5).map((r, i) => `(${i+1}) ${r.title || r.snippet || r.url || JSON.stringify(r)}`).join('\n');
+        } else if (typeof tavilyResults === 'string') {
+          summary = tavilyResults;
+        } else if (tavilyResults && typeof tavilyResults === 'object' && Array.isArray(tavilyResults.results)) {
+          summary = tavilyResults.results.slice(0,5).map((r, i) => `(${i+1}) ${r.title || r.snippet || r.url || ''}`).join('\n');
+        }
+        if (summary) messages.push({ role: 'system', content: `Web search results (from Tavily):\n${summary}` });
+      } catch (e) {
+        console.warn('Error processing tavilyResults', e)
+      }
+    }
+
+    // Add the user's message
+    messages.push({ role: 'user', content: text });
 
     async function callModel(model) {
       return fetch('https://api.groq.com/openai/v1/chat/completions', {

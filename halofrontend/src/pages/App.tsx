@@ -68,11 +68,29 @@ export default function App(){
   const [channelId] = useState('halo-general')
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(true)
   const [quickActive, setQuickActive] = useState<Set<string>>(()=> new Set())
+  const [draftValue, setDraftValue] = useState('')
+  const [tavilyResults, setTavilyResults] = useState<any|null>(null)
   const handleQuickToggle = (label:string, cb:()=>void) => {
     setQuickActive(prev => {
       const next = new Set(prev)
+      const willActivate = !next.has(label)
       if(next.has(label)) next.delete(label)
       else next.add(label)
+
+      // If enabling Web Search, fetch tavily results for current draft
+      if(label === 'Web Search' && willActivate){
+        (async ()=>{
+          try{
+            const resp = await fetch('http://localhost:3000/search/tavily',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ query: draftValue || '', limit: 5 }) })
+            if(!resp.ok) return
+            const json = await resp.json().catch(()=>null)
+            setTavilyResults(json)
+          }catch(e){ console.warn('Failed to fetch tavily', e) }
+        })()
+      }
+      if(label === 'Web Search' && !willActivate){
+        setTavilyResults(null)
+      }
       return next
     })
     try { cb() } catch {}
@@ -217,7 +235,7 @@ export default function App(){
       const resp = await fetch('http://localhost:3000/chat/message',{ 
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ channelId, userId, text, haloThink: Array.from(quickActive).includes('HaloThink') })
+        body: JSON.stringify({ channelId, userId, text, haloThink: Array.from(quickActive).includes('HaloThink'), webSearch: Array.from(quickActive).includes('Web Search'), tavilyResults })
       })
       if(!resp.ok){
         console.error('Backend error', resp.status)
@@ -266,7 +284,7 @@ export default function App(){
       setLoading(false)
       sendingRef.current = false
     }
-  },[activeId, channelId, userId, active.id])
+  },[activeId, channelId, userId, active.id, quickActive])
 
   const stop = useCallback(async ()=>{
     setLoading(false)
@@ -437,7 +455,7 @@ export default function App(){
         <HaloWordmark />
       </div>
       <motion.div layoutId='chat-input' initial={false} className='w-full max-w-3xl mx-auto'>
-        <ChatInput mode='hero' disabled={loading} onTyping={(st)=>setTyping(st)} onSend={t=>{ setTyping(false); sendMessage(t) }} onStop={stop} />
+        <ChatInput mode='hero' disabled={loading} onTyping={(st)=>setTyping(st)} onSend={t=>{ setTyping(false); sendMessage(t) }} onStop={stop} onValueChange={(v)=>setDraftValue(v)} />
       </motion.div>
       <div className='w-full max-w-3xl mx-auto -mt-2'>
         <QuickActions active={quickActive} onToggle={handleQuickToggle} />
@@ -505,7 +523,7 @@ export default function App(){
             className='relative z-30 bg-black/60 backdrop-blur-xl px-4 md:px-10 lg:px-32 pt-4 pb-6 shadow-[0_-8px_32px_-10px_rgba(0,0,0,0.8)]'
           >
             <motion.div initial={false} className='w-full max-w-4xl mx-auto space-y-4' transition={{type:'spring', stiffness:180, damping:24}}>
-              <ChatInput disabled={loading} onTyping={(st)=>setTyping(st)} onSend={t=>{ setTyping(false); sendMessage(t) }} onStop={stop} />
+              <ChatInput disabled={loading} onTyping={(st)=>setTyping(st)} onSend={t=>{ setTyping(false); sendMessage(t) }} onStop={stop} onValueChange={(v)=>setDraftValue(v)} />
               <QuickActions active={quickActive} onToggle={handleQuickToggle} />
             </motion.div>
           </motion.div>

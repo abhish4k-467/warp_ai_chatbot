@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Send, Square } from 'lucide-react'
 
-interface ChatInputProps { disabled:boolean; onSend:(v:string)=>void; onStop:()=>void; onTyping:(active:boolean)=>void; mode?:'hero'|'dock' }
+interface ChatInputProps { disabled:boolean; onSend:(v:string)=>void; onStop:()=>void; onTyping:(active:boolean)=>void; mode?:'hero'|'dock'; onValueChange?: (v:string)=>void }
 
-export function ChatInput({ disabled, onSend, onStop, onTyping, mode='dock' }:ChatInputProps){
+export function ChatInput({ disabled, onSend, onStop, onTyping, mode='dock', onValueChange }:ChatInputProps){
   const [v,setV] = useState('')
   const ref = useRef<HTMLTextAreaElement|null>(null)
   const [rows,setRows] = useState(1)
@@ -13,6 +13,7 @@ export function ChatInput({ disabled, onSend, onStop, onTyping, mode='dock' }:Ch
   const typingTimer = useRef<number|undefined>(undefined)
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>){
     setV(e.target.value)
+    if(onValueChange) onValueChange(e.target.value)
     onTyping(true)
     if(typingTimer.current) window.clearTimeout(typingTimer.current)
     typingTimer.current = window.setTimeout(()=> onTyping(false), 550)
@@ -25,7 +26,7 @@ export function ChatInput({ disabled, onSend, onStop, onTyping, mode='dock' }:Ch
           {/* chrome glow ring */}
           <div className='pointer-events-none absolute -inset-[2px] rounded-full bg-[linear-gradient(135deg,rgba(255,255,255,0.55),rgba(170,180,190,0.15),rgba(255,255,255,0.45))] opacity-20 group-hover:opacity-35 group-focus-within:opacity-45 transition duration-500 blur-[1px]' />
           <div className='relative rounded-full bg-black border border-white/15 shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_4px_14px_-6px_rgba(0,0,0,0.9)] focus-within:border-white/30 focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.15),0_6px_18px_-6px_rgba(0,0,0,0.85)] transition-[border,box-shadow] duration-400 flex items-center h-14 px-4'>
-            <textarea
+      <textarea
               ref={ref}
               value={v}
               aria-label='Message input'
@@ -58,7 +59,7 @@ export function ChatInput({ disabled, onSend, onStop, onTyping, mode='dock' }:Ch
     <div className='relative flex-1 group'>
       <div className='pointer-events-none absolute -inset-[2px] rounded-full bg-[linear-gradient(130deg,rgba(255,255,255,0.55),rgba(170,180,190,0.15),rgba(255,255,255,0.45))] opacity-15 group-hover:opacity-25 group-focus-within:opacity-35 transition duration-500 blur-[1px]' />
       <div className='relative rounded-full bg-black border border-white/12 flex items-center h-13 min-h-[52px] px-4 shadow-[0_0_0_1px_rgba(255,255,255,0.05),0_4px_12px_-6px_rgba(0,0,0,0.85)] focus-within:border-white/25 focus-within:shadow-[0_0_0_1px_rgba(255,255,255,0.12),0_6px_16px_-6px_rgba(0,0,0,0.85)] transition-[border,box-shadow] duration-400'>
-        <textarea
+  <textarea
           ref={ref}
           value={v}
           aria-label='Message input'

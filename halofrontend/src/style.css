@@ -1,0 +1,205 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+html, body, #root { height: 100%; }
+body { overflow: hidden; }
+
+.glass { background: linear-gradient(135deg, rgba(255,255,255,.12), rgba(255,255,255,.04)); backdrop-filter: blur(18px) saturate(180%); border: 1px solid rgba(255,255,255,0.12); }
+.glass-edge { box-shadow: 0 0 0 1px rgba(255,255,255,0.05), 0 2px 12px -2px rgba(0,0,0,0.7), 0 0 24px -4px rgba(120,180,255,0.3); }
+
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+
+/* Hide scrollbar for main chat area */
+.chat-scroll-container::-webkit-scrollbar { display: none; }
+.chat-scroll-container { scrollbar-width: none; transition: margin 0.35s cubic-bezier(0.4,0,0.2,1), width 0.35s cubic-bezier(0.4,0,0.2,1); }
+
+/* Hide scrollbar for collapsed sidebar history list */
+.sidebar-history-collapsed::-webkit-scrollbar { display: none; }
+.sidebar-history-collapsed { scrollbar-width: none; }
+
+.sparkle-bg { position: absolute; inset:0; overflow:hidden; pointer-events:none; }
+.star { position:absolute; width:2px; height:2px; background: radial-gradient(circle,#fff,#fff0); border-radius:50%; animation: starFall linear infinite; opacity:0; filter: drop-shadow(0 0 6px #fff); }
+.typing .star { animation-duration: 3.5s; }
+
+.message-enter { animation: fadeIn .6s ease; }
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display:none; }
+
+/* framer motion generated stars */
+.mstar { position:absolute; background:radial-gradient(circle,#fff,#ffffff66,#fff0); border-radius:50%; filter:drop-shadow(0 0 4px #fff) drop-shadow(0 0 10px #38bdf8); mix-blend-mode:screen; }
+ .shooting-star { position:absolute; height:2px; background:linear-gradient(90deg,rgba(255,255,255,0.55),rgba(170,230,255,0.18),rgba(0,0,0,0)); border-radius:9999px; box-shadow:0 0 4px 1px rgba(150,210,255,0.15); transform-origin:left center; filter:blur(.4px) brightness(1.05); mix-blend-mode:screen; pointer-events:none; }
+@keyframes haloSheen { 0% { background-position:0% 50%; } 100% { background-position:200% 50%; } }
+.halo-chrome { background:linear-gradient(115deg,#f8f8f8 0%,#b7c1c9 12%,#eef2f5 25%,#6d7681 38%,#dfe4e8 52%,#4e555d 65%,#e7ebee 78%,#b0bac2 90%,#fafafa 100%); -webkit-background-clip:text; background-clip:text; color:transparent; line-height:1; text-shadow:0 2px 4px rgba(0,0,0,.35),0 6px 18px rgba(0,0,0,.4); animation:haloSheen 7s linear infinite; background-size:200% 200%; filter:drop-shadow(0 0 6px rgba(255,255,255,0.08)) drop-shadow(0 0 22px rgba(120,180,255,0.15)); }
+
+/* AI Response Formatting */
+.ai-response-content {
+  font-size: 0.98rem;
+  line-height: 1.45;
+}
+
+/* Headers */
+.ai-response-content h1,
+.ai-response-content h2,
+.ai-response-content h3 {
+  font-weight: 700;
+  color: #f1f5f9;
+  margin: 1rem 0 0.6rem 0;
+  text-shadow: 0 0 6px rgba(120, 180, 255, 0.22);
+}
+
+.ai-response-content h1 {
+  font-size: 1.6rem;
+  background: linear-gradient(135deg, #60a5fa, #a78bfa, #fb7185);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 8px rgba(120, 180, 255, 0.32));
+}
+
+.ai-response-content h2 {
+  font-size: 1.25rem;
+  color: #cbd5e1;
+}
+
+.ai-response-content h3 {
+  font-size: 1.05rem;
+  color: #94a3b8;
+}
+
+/* Paragraphs */
+.ai-response-content p {
+  margin: 0.5rem 0;
+  color: #e2e8f0;
+  font-size: 0.98rem;
+  line-height: 1.45;
+}
+
+/* Blackhole thinking loader */
+.blackhole-wrap { position: relative; display:inline-block; }
+.blackhole-core { position:absolute; inset:12% 12%; border-radius:50%; background: radial-gradient(circle at 30% 30%, #000, #060606 40%, #0b1220 70%); box-shadow: 0 0 30px rgba(100,160,255,0.08) inset, 0 6px 18px rgba(0,0,0,0.8); }
+.blackhole-ring { position:absolute; inset:0; border-radius:50%; border: 2px solid rgba(160,220,255,0.06); box-shadow: 0 0 24px rgba(100,160,255,0.08), 0 0 48px rgba(120,190,255,0.04) inset; }
+.blackhole-flare { position:absolute; inset:0; border-radius:50%; background: radial-gradient(circle at 50% 10%, rgba(120,180,255,0.12), rgba(0,0,0,0) 40%); mix-blend-mode:screen; }
+
+/* Code blocks */
+.ai-response-content code {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 6px;
+  padding: 0.15rem 0.4rem;
+  font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  font-size: 0.88rem;
+  color: #60a5fa;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.2), 0 0 8px rgba(96,165,250,0.04);
+}
+
+.ai-response-content pre {
+  position: relative;
+  background: rgba(20, 24, 30, 0.98); /* keep container dark but compact */
+  border: 1px solid rgba(148, 163, 184, 0.2); /* subtle grey border */
+  border-radius: 8px;
+  padding: 0.75rem;
+  margin: 0.6rem 0;
+  overflow-x: auto;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  z-index: 0;
+}
+
+/* Chrome-like gradient glow border for AI code blocks */
+.ai-response-content pre::before {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: -4px; /* size of glow */
+  border-radius: 12px;
+  background: linear-gradient(90deg, rgba(96,165,250,0.14), rgba(167,139,250,0.12), rgba(251,113,133,0.10));
+  filter: blur(8px);
+  opacity: 0.95;
+  z-index: -1;
+}
+
+/* AI Code Block specific styles */
+.ai-code-block { position: relative; margin: 1rem 0; }
+.ai-code-pre {
+  background: #000000; /* pure black background as requested */
+  border-radius: 8px;
+  padding: 1rem;
+  overflow-x: auto;
+  position: relative;
+  z-index: 0;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.6);
+}
+
+/* hide scrollbar inside code container but preserve scroll functionality */
+.ai-code-pre::-webkit-scrollbar { height: 8px; display: none; }
+.ai-code-pre { scrollbar-width: none; }
+
+/* copy button (simple shadcn-like style) */
+.ai-code-copy {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+  border: 1px solid rgba(255,255,255,0.06);
+  color: #e6eef9;
+  padding: 6px 8px;
+  font-size: 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 6px 16px rgba(18, 28, 40, 0.6);
+}
+
+.ai-code-copy:hover { transform: translateY(-1px); }
+
+/* keep chrome glow but only around the border (not the whole pre) */
+.ai-code-block::before {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, rgba(96,165,250,0.12), rgba(167,139,250,0.10), rgba(251,113,133,0.08));
+  filter: blur(10px);
+  z-index: -1;
+}
+
+.ai-response-content pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  box-shadow: none;
+  color: #e2e8f0;
+  font-size: 0.95rem;
+}
+
+/* Lists */
+.ai-response-content ul,
+.ai-response-content ol {
+  margin: 1rem 0;
+  padding-left: 1.5rem;
+}
+
+.ai-response-content li {
+  margin: 0.5rem 0;
+  color: #e2e8f0;
+}
+
+/* Strong/Bold text */
+.ai-response-content strong,
+.ai-response-content b {
+  color: #f1f5f9;
+  font-weight: 600;
+}
+
+/* Emphasis/Italic */
+.ai-response-content em,
+.ai-response-content i {
+  color: #cbd5e1;
+  font-style: italic;
+}

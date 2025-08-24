@@ -1,0 +1,23 @@
+{
+  "name": "halouniverse-v1",
+  "version": "0.1.0",
+  "private": true,
+  "description": "HALO backend server (OpenRouter proxy)",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+  "dotenv": "^16.4.5",
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

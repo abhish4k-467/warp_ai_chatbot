@@ -13,7 +13,7 @@ interface QuickActionsProps {
 
 export function QuickActions({ active, onToggle }: QuickActionsProps){
   const actions:Action[] = [
-  { label:'HaloThink', icon:<Brain className='w-[18px] h-[18px] opacity-80' />, onClick:()=>console.log('HaloThink') },
+  { label:'WarpThink', icon:<Brain className='w-[18px] h-[18px] opacity-80' />, onClick:()=>console.log('WarpThink') },
   { label:'Web Search', icon:<Globe2 className='w-[18px] h-[18px] opacity-80' />, onClick:()=>console.log('Web Search') },
   { label:'Voice', icon:<Mic className='w-[18px] h-[18px] opacity-80' />, onClick:()=>console.log('Voice') },
   ]

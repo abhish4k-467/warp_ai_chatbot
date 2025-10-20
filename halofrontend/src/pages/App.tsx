@@ -4,7 +4,7 @@ import { ChatInput } from '../components/ChatInput'
 import { HistoryList } from '../components/HistoryList'
 import { DotTypingIndicator } from '../components/TypingAnimation'
 import { SettingsModal } from '../components/SettingsModal'
-import { Loader2, Plus, Search, Settings, ChevronLeft, ChevronRight, ListTodo, ChevronDown } from 'lucide-react'
+import { Loader2, Plus, Search, Settings, ChevronLeft, ChevronRight, ListTodo, ChevronDown, Globe2 } from 'lucide-react'
 import { HaloWordmark } from '../components/HaloWordmark'
 import { CosmosBackground } from '../components/CosmosBackground'
 import { QuickActions } from '../components/QuickActions'
@@ -67,9 +67,12 @@ export default function App(){
   const [userId] = useState(()=> 'user-'+Math.random().toString(36).slice(2,8))
   const [channelId] = useState('halo-general')
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(true)
+  const manualScrollRef = useRef(false)
+  const lastScrollTopRef = useRef(0)
   const [quickActive, setQuickActive] = useState<Set<string>>(()=> new Set())
   const [draftValue, setDraftValue] = useState('')
   const [tavilyResults, setTavilyResults] = useState<any|null>(null)
+  const [showMaintenanceModal, setShowMaintenanceModal] = useState(false)
   const handleQuickToggle = (label:string, cb:()=>void) => {
     setQuickActive(prev => {
       const next = new Set(prev)
@@ -82,10 +85,13 @@ export default function App(){
         (async ()=>{
           try{
             const resp = await fetch('http://localhost:3000/search/tavily',{ method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ query: draftValue || '', limit: 5 }) })
-            if(!resp.ok) return
+            if(!resp.ok) throw new Error('Fetch failed')
             const json = await resp.json().catch(()=>null)
             setTavilyResults(json)
-          }catch(e){ console.warn('Failed to fetch tavily', e) }
+          }catch(e){ 
+            console.warn('Failed to fetch tavily', e)
+            setShowMaintenanceModal(true)
+          }
         })()
       }
       if(label === 'Web Search' && !willActivate){
@@ -96,6 +102,26 @@ export default function App(){
     try { cb() } catch {}
   }
   // stars handled by AnimatedStars
+
+  useEffect(() => {
+    if (quickActive.has('Web Search') && draftValue.trim()) {
+      (async () => {
+        try {
+          const resp = await fetch('http://localhost:3000/search/tavily', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: draftValue, limit: 5 })
+          });
+          if (!resp.ok) throw new Error('Fetch failed');
+          const json = await resp.json().catch(() => null);
+          setTavilyResults(json);
+        } catch (e) {
+          console.warn('Failed to fetch tavily', e);
+          setShowMaintenanceModal(true);
+        }
+      })();
+    }
+  }, [draftValue, quickActive])
 
   useEffect(()=>{ 
     if (autoScrollEnabled) {
@@ -111,13 +137,27 @@ export default function App(){
     const handleScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = container
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight
-      
-      // If user is within 100px of bottom, enable auto-scroll
-      // If they scroll up more than 100px, disable auto-scroll
-      if (distanceFromBottom <= 100) {
-        setAutoScrollEnabled(true)
+      const isScrollingUp = scrollTop < lastScrollTopRef.current
+      lastScrollTopRef.current = scrollTop
+
+      if (isScrollingUp) {
+        manualScrollRef.current = true
+        setAutoScrollEnabled(prev => (prev ? false : prev))
+        return
+      }
+
+      if (manualScrollRef.current) {
+        if (distanceFromBottom <= 24) {
+          manualScrollRef.current = false
+          setAutoScrollEnabled(prev => (prev ? prev : true))
+        }
+        return
+      }
+
+      if (distanceFromBottom <= 120) {
+        setAutoScrollEnabled(prev => (prev ? prev : true))
       } else {
-        setAutoScrollEnabled(false)
+        setAutoScrollEnabled(prev => (prev ? false : prev))
       }
     }
 
@@ -126,11 +166,11 @@ export default function App(){
   }, [])
 
   // Pass auto-scroll state to typing animation
-  const scrollToBottom = () => {
-    if (autoScrollEnabled && bottomRef.current) {
-      bottomRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  const scrollToBottom = useCallback((opts?: { force?: boolean; behavior?: ScrollBehavior }) => {
+    if ((autoScrollEnabled || opts?.force) && bottomRef.current) {
+      bottomRef.current.scrollIntoView({ behavior: opts?.behavior ?? 'smooth', block: 'nearest' })
     }
-  }
+  }, [autoScrollEnabled])
 
   // simple appear animation on initial mount
   useEffect(()=>{
@@ -205,6 +245,9 @@ export default function App(){
   const sendMessage = useCallback(async (text:string)=>{
     if(!text.trim()) return;
     if(sendingRef.current) return;
+  manualScrollRef.current = false
+  setAutoScrollEnabled(prev => (prev ? prev : true))
+    requestAnimationFrame(()=> scrollToBottom({ force:true }))
     setIdle(false);
     setIdleEnabled(false);
     const msg:ChatMessageData={ id:crypto.randomUUID(), role:'user', content:text, createdAt:Date.now() };
@@ -235,7 +278,7 @@ export default function App(){
       const resp = await fetch('http://localhost:3000/chat/message',{ 
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ channelId, userId, text, haloThink: Array.from(quickActive).includes('HaloThink'), webSearch: Array.from(quickActive).includes('Web Search'), tavilyResults })
+  body: JSON.stringify({ channelId, userId, text, haloThink: Array.from(quickActive).includes('WarpThink'), webSearch: Array.from(quickActive).includes('Web Search'), tavilyResults })
       })
       if(!resp.ok){
         console.error('Backend error', resp.status)
@@ -284,7 +327,7 @@ export default function App(){
       setLoading(false)
       sendingRef.current = false
     }
-  },[activeId, channelId, userId, active.id, quickActive])
+  },[activeId, channelId, userId, active.id, quickActive, scrollToBottom])
 
   const stop = useCallback(async ()=>{
     setLoading(false)
@@ -474,7 +517,7 @@ export default function App(){
               before:absolute before:inset-0 before:rounded-2xl before:pointer-events-none before:bg-[linear-gradient(140deg,rgba(255,255,255,0.08),rgba(255,255,255,0)_35%,rgba(255,255,255,0)_65%,rgba(255,255,255,0.08))] before:opacity-40
               after:absolute after:top-px after:left-px after:right-px after:bottom-px after:rounded-[1rem] after:pointer-events-none after:border after:border-white/5"
             >
-              {Array.from(quickActive).includes('HaloThink') ? (
+              {Array.from(quickActive).includes('WarpThink') ? (
                 <div className='flex items-center gap-3'>
                   <BlackholeLoader size={48} />
                   <span className='text-slate-300'>HALO is thinking (deep)</span>
@@ -499,8 +542,9 @@ export default function App(){
           >
             <button
               onClick={() => {
-                setAutoScrollEnabled(true)
-                bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+                manualScrollRef.current = false
+                setAutoScrollEnabled(prev => (prev ? prev : true))
+                scrollToBottom({ force: true })
               }}
               className="flex items-center gap-2 px-4 py-2 rounded-full bg-blue-600/90 hover:bg-blue-600 text-white text-sm font-medium shadow-lg backdrop-blur-sm border border-blue-500/30 transition-colors"
             >
@@ -578,5 +622,49 @@ export default function App(){
 
     {/* Settings Modal */}
     <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
+
+    {/* Maintenance Modal */}
+    <AnimatePresence>
+      {showMaintenanceModal && (
+        <Modal onClose={() => {
+          setShowMaintenanceModal(false);
+          setQuickActive(prev => {
+            const next = new Set(prev);
+            next.delete('Web Search');
+            return next;
+          });
+        }}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="bg-black border border-white/20 rounded-2xl p-6 shadow-2xl"
+          >
+            <div className="text-center">
+              <div className="w-12 h-12 rounded-full bg-yellow-500/20 border border-yellow-500/30 flex items-center justify-center mx-auto mb-4">
+                <Globe2 className="w-6 h-6 text-yellow-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-white mb-2">Under Maintenance</h3>
+              <p className="text-white/70 text-sm mb-4">
+                Web Search is currently under maintenance. Please try again later.
+              </p>
+              <button
+                onClick={() => {
+                  setShowMaintenanceModal(false);
+                  setQuickActive(prev => {
+                    const next = new Set(prev);
+                    next.delete('Web Search');
+                    return next;
+                  });
+                }}
+                className="px-4 py-2 bg-white/10 hover:bg-white/15 border border-white/20 rounded-lg text-white text-sm transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </motion.div>
+        </Modal>
+      )}
+    </AnimatePresence>
   </div>
 }

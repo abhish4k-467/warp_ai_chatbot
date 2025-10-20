@@ -1,17 +1,20 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import multer from 'multer';
+import fs from 'fs';
+import path from 'path';
+import sharp from 'sharp';
 
-// Basic Express server that proxies chat to Groq
 const app = express();
 const PORT = process.env.PORT || 3000;
-const HALO_MODEL = 'openai/gpt-oss-20b'; // Requested model (will fallback if not available on Groq)
+const HALO_MODEL = 'openai/gpt-oss-20b';
 
-// Groq models - these are all free
+// Groq free models
 const FREE_MODELS = [
   'openai/gpt-oss-20b',
   'llama-3.1-70b-versatile',
-  'llama-3.1-8b-instant', 
+  'llama-3.1-8b-instant',
   'llama3-70b-8192',
   'llama3-8b-8192',
   'mixtral-8x7b-32768'
@@ -28,12 +31,35 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '1mb' }));
 
-// Health
-app.get('/health', (_req, res) => {
-  res.json({ ok: true, name: 'HALO Universe', version: 'v1', provider: 'Groq', model: HALO_MODEL });
+// Ensure uploads directory exists
+const UPLOAD_DIR = path.resolve('./uploads');
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+// Serve uploaded files
+app.use('/uploads', express.static(UPLOAD_DIR));
+
+// Multer setup for image uploads (memory storage so we can process with sharp)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith('image/')) return cb(new Error('Only image uploads allowed'));
+    cb(null, true);
+  }
 });
 
-// Simple in-memory "stop" flags per channel
+/* -------------------- Health -------------------- */
+app.get('/health', (_req, res) => {
+  res.json({
+    ok: true,
+    name: 'HALO Universe',
+    version: 'v1',
+    provider: 'Groq',
+    model: 'HALO Universe v1 architecture'
+  });
+});
+
+/* -------------------- Stop flags -------------------- */
 const stopFlags = new Map();
 
 app.post('/chat/stop', (req, res) => {
@@ -42,48 +68,79 @@ app.post('/chat/stop', (req, res) => {
   res.json({ stopped: true });
 });
 
-// Proxy endpoint for Tavily search so frontend can fetch results via backend (keeps API key server-side)
-app.post('/search/tavily', async (req, res) => {
-  const { query, limit = 5 } = req.body || {};
-  if (!query || typeof query !== 'string') return res.status(400).json({ error: 'Missing query' });
-  const tavilyApiKey = process.env.TAVILY_API_KEY;
-  if (!tavilyApiKey) return res.status(500).json({ error: 'TAVILY_API_KEY not set on server' });
-
-  const TAVILY_BASE = process.env.TAVILY_BASE_URL || 'https://api.tavily.com';
-  const url = `${TAVILY_BASE.replace(/\/$/, '')}/search`;
-
-  try {
-    const tavilyResp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${tavilyApiKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        query,
-        max_results: limit,
-        search_depth: "basic"
-      })
-    });
-
-    const bodyText = await tavilyResp.text().catch(()=> '');
-    if (!tavilyResp.ok) {
-      console.warn(`Tavily API error ${tavilyResp.status} when calling ${url}`, bodyText);
-      return res.status(tavilyResp.status).json({ error: 'Tavily API error', status: tavilyResp.status, url, body: tryParse(bodyText) });
-    }
-
-    try { return res.status(200).json(JSON.parse(bodyText)) } catch { return res.status(200).send(bodyText) }
-  } catch (e) {
-    console.warn('Tavily proxy error', e);
-    return res.status(500).json({ error: 'Tavily proxy error', details: String(e) });
-  }
-})
-
-function tryParse(text){
-  try{ return JSON.parse(text) }catch{return text}
+/* -------------------- Utilities -------------------- */
+function nowIso() {
+  return new Date().toISOString();
 }
 
-// Chat message -> forwards to Groq and returns reply (non-streaming)
+// Fixed HALO identity answers
+const FIXED_MODEL = "HALO AI";
+
+// Array of beautified architecture responses
+const FIXED_ARCHITECTURE_LINES = [
+  "HALO AI — powered by Web Search, Halo Think, and Voice Mode.",
+  "The HALO Universe v1 Architecture: Web Search · Halo Think · Voice Mode.",
+  "HALO Universe v1 Architecture — a fusion of Web Search, Halo Think, and Voice Mode.",
+  "HALO Universe v1 = Web Search 🔍 + Halo Think 🧠 + Voice Mode 🎤 → your ultimate AI sidekick 🚀."
+];
+
+// Keep track of the current index
+let archIndex = 0;
+
+// Function to get next line in cycle
+function getArchitectureLine() {
+  const line = FIXED_ARCHITECTURE_LINES[archIndex];
+  archIndex = (archIndex + 1) % FIXED_ARCHITECTURE_LINES.length; // cycle
+  return line;
+}
+
+// Detect if user is asking about model/architecture
+function checkIdentityIntent(text = '') {
+  const q = text.toLowerCase();
+  if (q.includes("which model") || /\bmodel\b/.test(q)) {
+    return FIXED_MODEL;
+  }
+  if (q.includes("which architecture") || /\barchitecture\b/.test(q)) {
+    return getArchitectureLine();
+  }
+  return null;
+}
+
+function buildStrictSystemPrompt({ baseOnly = false } = {}) {
+  const baseSystem = `You are HALO AI, a concise, helpful assistant.
+Current ISO time: ${nowIso()}.
+
+### Identity
+- You run on the **HALO Universe 1 architecture**.
+- Your unique capabilities: Web Search, Halo Think, and Voice Mode for human-like conversations.
+- Never mention Groq, OpenAI, GPT, or LLaMA.
+  - If the user asks about your architecture or model, always answer with: 
+  "${getArchitectureLine()}".
+- Stay consistent — never reveal backend provider or model names.
+
+Always be factual and avoid guessing. If you are unsure, say so briefly.`;
+
+  const formattingExtra = `
+
+### Rules (STRICT when web results are provided)
+- Use ONLY the provided "Web search results" as facts.
+- If the results are not sufficient or conflict, say: "I couldn't find a reliable answer from the results."
+- Keep answers short and direct.`;
+
+  return baseOnly ? baseSystem : baseSystem + formattingExtra;
+}
+
+// Remove backend leaks
+function enforceHaloIdentity(reply) {
+  if (!reply) return reply;
+  return reply
+    .replace(/gpt[\s-]*\d+/gi, 'HALO Universe 1 architecture')
+    .replace(/llama[-\s]?\d*/gi, 'HALO Universe 1 architecture')
+    .replace(/groq/gi, 'HALO Universe 1 architecture')
+    .replace(/openai/gi, 'HALO Universe 1 architecture');
+}
+
+/* -------------------- Chat -------------------- */
 app.post('/chat/message', async (req, res) => {
   const { text, userId, channelId, haloThink, webSearch, tavilyResults } = req.body || {};
   if (!text || typeof text !== 'string') {
@@ -93,108 +150,33 @@ app.post('/chat/message', async (req, res) => {
   stopFlags.set(channelId || 'default', false);
 
   try {
-    const apiKey = process.env.GROQ_API_KEY;
+    // 🔹 Check deterministic HALO intents first
+    const fixedReply = checkIdentityIntent(text);
+    if (fixedReply) {
+      return res.json({ reply: fixedReply, model: 'HALO Identity', userId, channelId });
+    }
+
+    const apiKey = "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";
     if (!apiKey) {
       return res.status(500).json({ error: 'GROQ_API_KEY not set' });
     }
 
-    // Build Groq request
     const primaryModel = haloThink ? 'openai/gpt-oss-120b' : HALO_MODEL;
 
-    // Heuristic for simple vs complex prompts
-    const totalChars = String(text || '').replace(/\s+/g, '').length;
-    const lines = String(text || '').split('\n').length;
+    const systemPrompt = buildStrictSystemPrompt({ baseOnly: !webSearch && !tavilyResults });
 
-    const isSuperShort = totalChars <= 10; 
-    const isSimple = totalChars > 0 && totalChars <= 120 && lines <= 2;
-
-    // Base system prompt
-    const baseSystem = `You are HALO AI, a playful, creative, and intelligent assistant.
-Always reply in a friendly, concise way with natural emojis 🎉.
-Keep answers short unless the user explicitly asks for detail.`;
-
-    const formattingExtra = `\n\n### Formatting Rules:
-- Add a **title/heading** only for complex outputs, separated with a horizontal line (---).
-- Use **bold text** and emojis for section headers when appropriate.
-- Write in clear paragraphs, never a single block of text.
-- Use **lists** when explaining step-by-step content.
-- For stories, poems, or creative writing:
-  - Begin with a **story title** styled with emoji + bold text.
-  - Keep paragraphs short, descriptive, and dramatic.
-  - End with a reflection, suspense, or a question if fitting.
-- For code:
-  - Always wrap in proper code blocks with language specified.
-  - Include comments for clarity.`;
-
-    let systemPrompt;
-    if (isSuperShort && !webSearch) {
-      systemPrompt = `You are HALO AI. The user just greeted you with something very short like "Hi". 
-Reply with a single friendly one-liner and one emoji.`;
-    } else {
-      systemPrompt = (isSimple && !haloThink && !webSearch) ? baseSystem : baseSystem + formattingExtra;
+    let userContent = text;
+    if (tavilyResults && tavilyResults.results) {
+      const formattedResults = tavilyResults.results.map((result, index) => 
+        `${index + 1}. **${result.title}**\n   ${result.content}\n   Source: ${result.url}`
+      ).join('\n\n');
+      userContent += `\n\nWeb search results:\n${formattedResults}`;
     }
 
     const messages = [
       { role: 'system', content: systemPrompt },
+      { role: 'user', content: userContent }
     ];
-
-    // Always honor webSearch request
-    if (webSearch) {
-      try {
-        const tavilyApiKey = process.env.TAVILY_API_KEY;
-        if (!tavilyApiKey) {
-          console.warn('Web search requested but TAVILY_API_KEY not set');
-        } else {
-          const tavilyResp = await fetch('https://api.tavily.com/search', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${tavilyApiKey}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              query: text,
-              max_results: 5,
-              search_depth: "basic"
-            })
-          });
-
-          if (tavilyResp.ok) {
-            const tavilyJson = await tavilyResp.json().catch(()=> null);
-            let summary = '';
-            if (tavilyJson && Array.isArray(tavilyJson.results)) {
-              summary = tavilyJson.results.slice(0,5).map((r, i) => `(${i+1}) ${r.title || r.snippet || r.url || ''}`).join('\n');
-            } else if (tavilyJson && typeof tavilyJson.summary === 'string') {
-              summary = String(tavilyJson.summary);
-            }
-            if (summary) {
-              messages.push({ role: 'system', content: `Web search results (from Tavily):\n${summary}` });
-            }
-          } else {
-            const body = await tavilyResp.text().catch(()=> '')
-            console.warn('Tavily API error', tavilyResp.status, body)
-          }
-        }
-      } catch (e) {
-        console.warn('Error calling Tavily', e)
-      }
-    } else if (tavilyResults) {
-      try {
-        let summary = '';
-        if (Array.isArray(tavilyResults)) {
-          summary = tavilyResults.slice(0,5).map((r, i) => `(${i+1}) ${r.title || r.snippet || r.url || JSON.stringify(r)}`).join('\n');
-        } else if (typeof tavilyResults === 'string') {
-          summary = tavilyResults;
-        } else if (tavilyResults && typeof tavilyResults === 'object' && Array.isArray(tavilyResults.results)) {
-          summary = tavilyResults.results.slice(0,5).map((r, i) => `(${i+1}) ${r.title || r.snippet || r.url || ''}`).join('\n');
-        }
-        if (summary) messages.push({ role: 'system', content: `Web search results (from Tavily):\n${summary}` });
-      } catch (e) {
-        console.warn('Error processing tavilyResults', e)
-      }
-    }
-
-    // Add the user's message
-    messages.push({ role: 'user', content: text });
 
     async function callModel(model) {
       return fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -207,21 +189,18 @@ Reply with a single friendly one-liner and one emoji.`;
           model,
           messages,
           stream: false,
-          temperature: 0.7,
+          temperature: webSearch ? 0.2 : 0.7,
           max_tokens: 2048
         })
       });
     }
 
-    // Try primary model first, then fallback
     let usedModel = primaryModel;
     let resp = await callModel(primaryModel);
 
     if (!resp.ok) {
-      console.log(`Primary model ${primaryModel} failed with ${resp.status}, trying fallbacks...`);
       for (const fallbackModel of FREE_MODELS) {
         if (fallbackModel === primaryModel) continue;
-        console.log(`Trying fallback model: ${fallbackModel}`);
         usedModel = fallbackModel;
         resp = await callModel(fallbackModel);
         if (resp.ok) break;
@@ -230,30 +209,115 @@ Reply with a single friendly one-liner and one emoji.`;
 
     if (!resp.ok) {
       const bodyText = await resp.text();
-      return res.status(resp.status === 402 ? 402 : 502).json({
+      return res.status(resp.status || 502).json({
         error: 'Groq API error',
-        reason:
-          resp.status === 402 || /insufficient balance/i.test(bodyText)
-            ? 'Rate limit or quota exceeded on Groq.'
-            : resp.status === 401
-            ? 'Authentication issue with Groq API - check GROQ_API_KEY.'
-            : 'Upstream error from Groq.',
-        model: usedModel,
-        details: bodyText
+        details: bodyText,
+        model: usedModel
       });
     }
 
     const data = await resp.json();
-    const content = data?.choices?.[0]?.message?.content || '';
+    let content = data?.choices?.[0]?.message?.content || '';
+    content = enforceHaloIdentity(content);
 
-    res.json({ reply: content, model: usedModel, userId, channelId });
+    res.json({ reply: content, model: 'HALO Universe 1 architecture', userId, channelId });
   } catch (err) {
-    console.error('Chat error', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
+/* -------------------- Tavily Web Search -------------------- */
+app.post('/search/tavily', async (req, res) => {
+  const { query, limit = 5 } = req.body || {};
+  if (!query || typeof query !== 'string') {
+    return res.status(400).json({ error: 'Missing query' });
+  }
+
+  const TAVILY_API_KEY = "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";
+
+  try {
+    const response = await fetch('https://api.tavily.com/search', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${TAVILY_API_KEY}`,
+      },
+      body: JSON.stringify({
+        query,
+        max_results: limit,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Tavily API error response:', errorText);
+      throw new Error(`Tavily API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    console.error('Tavily search error:', err);
+    res.status(500).json({ error: 'Failed to perform web search' });
+  }
+});
+
+/* -------------------- Visual Upload (image) -------------------- */
+// Receives multipart/form-data with field 'image' and optional 'text' in body
+app.post('/chat/visual', upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
+
+    const { originalname, buffer, mimetype, size } = req.file;
+    const timestamp = Date.now();
+    const filename = `${timestamp}-${originalname.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+    const outPath = path.join(UPLOAD_DIR, filename);
+
+    // Save original file
+    await fs.promises.writeFile(outPath, buffer);
+
+    // Use sharp to get metadata and produce a small thumbnail
+    const image = sharp(buffer);
+    const metadata = await image.metadata();
+    const thumbBuffer = await image.resize({ width: 512, height: 512, fit: 'inside' }).toBuffer();
+    const thumbName = `thumb-${filename}`;
+    await fs.promises.writeFile(path.join(UPLOAD_DIR, thumbName), thumbBuffer);
+
+    // Basic visual analysis placeholder: colors, dimensions, size
+    const analysis = {
+      filename,
+      mime: mimetype,
+      sizeBytes: size,
+      width: metadata.width,
+      height: metadata.height,
+      format: metadata.format,
+      hasAlpha: !!metadata.hasAlpha,
+    };
+
+    // Optional text prompt from client to guide visual understanding
+    const userText = req.body?.text || '';
+
+    // Placeholder: here you would call an external vision model or run OCR,
+    // object detection, etc. For now return metadata and a friendly summary.
+    const visualReply = `I received your image (${analysis.width}x${analysis.height}, ${analysis.format}). ${userText ? 'You asked: ' + userText : ''}`;
+
+    res.json({
+      ok: true,
+      analysis,
+      reply: visualReply,
+      files: {
+        original: `/uploads/${filename}`,
+        thumbnail: `/uploads/${thumbName}`
+      }
+    });
+  } catch (err) {
+    console.error('Visual upload error', err);
+    res.status(500).json({ error: 'Failed to process image' });
+  }
+});
+
+/* -------------------- Start -------------------- */
 app.listen(PORT, () => {
   console.log(`HALO backend listening on http://localhost:${PORT}`);
-  console.log(`Primary model: ${HALO_MODEL} (Groq)`);
+  console.log(`Primary model: HALO Universe 1 architecture`);
 });

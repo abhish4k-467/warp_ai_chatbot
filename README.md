@@ -1,4 +1,4 @@
-# HALO AI IS NOW WARP AI
+# HALO AI IS NOW WARP AI🛰️
 
 Warp AI is currently in the making!
 

@@ -1,12 +1,30 @@
-# halo-ai
-HALO AI is currently in the making!
+# HALO AI IS NOW WARP AI
 
-Halo is powered by the Halo Universe 1 architecture — integrating Web Search, the context-aware Halo Think layer, and Voice Mode to deliver natural, human-like conversations.
+Warp AI is currently in the making!
 
-## To start
-1) Make sure Terminal directory path points to the project!
-    i.e "C:/{directory_name}/{directory_name}\project_stardust>"
+Warp AI is powered by the Halo Universe 1 architecture — integrating Web Search, the context-aware Halo Think layer, and Voice Mode to deliver natural, human-like conversations.
 
-2) npx concurrently "npm --prefix halouniverse-v1 run dev" "npm --prefix halofrontend run dev"
+---
+
+## 🛠️ Getting Started
+
+Make sure your terminal directory path points to the project root:
 
 
+---
+
+## ▶️ Run the Project
+
+Start both the backend and frontend simultaneously using:
+
+
+Once the command runs successfully, Warp AI is now live and ready to use.
+
+---
+
+## 📊 Progress Report
+
+Backend development has been completed successfully.  
+Frontend is currently undergoing bug fixes and is being prepared for deployment.
+
+The next milestone is final frontend stabilization and production deployment.
